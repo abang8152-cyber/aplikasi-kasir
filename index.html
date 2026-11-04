@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Aplikasi Kasir Mangge</title>
+    <!-- Font & Icons -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Supabase & HTML5 QR Code Scanner -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+    
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --primary-hover: #4338CA;
+            --bg-color: #f3f4f6;
+            --glass-bg: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --text-dark: #1f2937;
+            --text-muted: #6b7280;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Poppins', sans-serif; }
+        body { 
+            background: var(--bg-color);
+            background-image: radial-gradient(at 0% 0%, hsla(253,16%,7%,0.05) 0, transparent 50%), radial-gradient(at 50% 0%, hsla(225,39%,30%,0.05) 0, transparent 50%), radial-gradient(at 100% 0%, hsla(339,49%,30%,0.05) 0, transparent 50%);
+            color: var(--text-dark);
+            position: fixed; inset: 0; z-index: 999999; overflow: hidden;
+            display: flex; flex-direction: column;
+        }
+        .glass {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.05);
+        }
+        
+        /* Layouts */
+        #app-container { display: flex; height: 100vh; width: 100vw; }
+        #preview-banner { background: #f59e0b; color: white; text-align: center; padding: 5px; font-size: 12px; font-weight: bold; z-index: 1000000; }
+        
+        /* Auth View */
+        #auth-view { position: fixed; inset: 0; display: flex; justify-content: center; align-items: center; z-index: 100; background: inherit; }
+        .login-box { width: 90%; max-width: 400px; padding: 30px; border-radius: 20px; }
+        .login-box h2 { text-align: center; margin-bottom: 20px; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; font-size: 12px; margin-bottom: 5px; font-weight: 500;}
+        .input-group input, .input-group select { width: 100%; padding: 10px; border-radius: 10px; border: 1px solid #ddd; background: rgba(255,255,255,0.9); outline: none; }
+        button.btn { width: 100%; padding: 12px; background: var(--primary); color: white; border: none; border-radius: 10px; font-weight: 600; cursor: pointer; transition: 0.3s; }
+        button.btn:hover { background: var(--primary-hover); }
+        .quick-login { margin-top: 15px; display: flex; gap: 10px; }
+        .quick-login button { flex: 1; font-size: 11px; padding: 8px; background: #10b981; }
+
+        /* Main View */
+        #main-view { display: none; flex: 1; width: 100%; height: 100%; flex-direction: row; }
+        
+        /* Sidebar (Desktop) */
+        nav.sidebar { width: 250px; padding: 20px; display: flex; flex-direction: column; gap: 10px; border-right: 1px solid var(--glass-border); }
+        .nav-item { padding: 12px 15px; border-radius: 10px; cursor: pointer; display: flex; align-items: center; gap: 10px; font-weight: 500; transition: 0.2s; color: var(--text-dark); }
+        .nav-item:hover, .nav-item.active { background: var(--primary); color: white; }
+        .user-info { margin-top: auto; padding-top: 20px; border-top: 1px solid #ddd; font-size: 12px; }
+
+        /* Content Area */
+        main.content { flex: 1; padding: 20px; overflow-y: auto; padding-bottom: 80px; }
+        .view-section { display: none; animation: fadeIn 0.3s ease; }
+        .view-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Cards & Tables */
+        .card { padding: 20px; border-radius: 15px; margin-bottom: 20px; }
+        .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; }
+        .stat-card { padding: 20px; border-radius: 15px; text-align: center; }
+        .stat-card h3 { font-size: 24px; color: var(--primary); }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; font-size: 14px; }
+        th { font-weight: 600; color: var(--text-muted); }
+        
+        /* POS Specific */
+        .pos-container { display: flex; gap: 20px; flex-wrap: wrap; }
+        .scanner-section { flex: 1; min-width: 300px; }
+        .cart-section { flex: 1; min-width: 300px; display: flex; flex-direction: column; justify-content: space-between; }
+        #reader { width: 100%; border-radius: 15px; overflow: hidden; border: none !important; }
+        .cart-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px dashed #ccc; }
+        .cart-total { font-size: 20px; font-weight: bold; text-align: right; margin: 20px 0; }
+        
+        /* Bottom Nav (Mobile) */
+        nav.bottom-nav { display: none; position: fixed; bottom: 0; left: 0; right: 0; height: 65px; border-top: 1px solid var(--glass-border); justify-content: space-around; align-items: center; z-index: 99; }
+        .bottom-nav .nav-item { flex-direction: column; gap: 5px; font-size: 11px; padding: 5px; border-radius: 0; }
+        .bottom-nav .nav-item i { font-size: 18px; }
+        .bottom-nav .nav-item.active { background: transparent; color: var(--primary); font-weight: 700; }
+        
+        /* Form inline */
+        .form-inline { display: flex; gap: 10px; margin-bottom: 15px; align-items: flex-end; flex-wrap: wrap; }
+        .form-inline .input-group { margin-bottom: 0; flex: 1; min-width: 120px; }
+
+        @media (max-width: 768px) {
+            nav.sidebar { display: none; }
+            nav.bottom-nav { display: flex; }
+            .pos-container { flex-direction: column; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="preview-banner" style="display: none;">🚨 MODE PREVIEW AKTIF - Data hanya tersimpan di memori browser 🚨</div>
+
+    <!-- Login View -->
+    <div id="auth-view">
+        <div class="glass login-box">
+            <h2><i class="fas fa-store text-primary"></i> KasirKita</h2>
+            <div class="input-group">
+                <label>Tipe Login</label>
+                <select id="login-type" onchange="toggleLoginType()">
+                    <option value="kasir">Kasir (Username)</option>
+                    <option value="admin">Admin (Email)</option>
+                </select>
+            </div>
+            <div class="input-group">
+                <label id="label-ident">Username</label>
+                <input type="text" id="auth-ident" placeholder="Masukkan ID">
+            </div>
+            <div class="input-group">
+                <label>Password</label>
+                <input type="password" id="auth-pass" placeholder="***">
+            </div>
+            <button class="btn" onclick="doLogin()">Masuk</button>
+            
+            <div class="quick-login" id="quick-login-btns" style="display: none;">
+                <button class="btn" onclick="quickLogin('admin')">Bypass Admin</button>
+                <button class="btn" onclick="quickLogin('kasir')">Bypass Kasir</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main View -->
+    <div id="main-view">
+        <!-- Sidebar Desktop -->
+        <nav class="sidebar glass" id="sidebar">
+            <h2 style="text-align: center; margin-bottom: 20px; font-size: 20px;">KasirKita</h2>
+            <div class="nav-item active" onclick="switchView('dashboard')"><i class="fas fa-chart-pie"></i> Dashboard</div>
+            <div class="nav-item" onclick="switchView('pos')"><i class="fas fa-cash-register"></i> Kasir (POS)</div>
+            <div class="nav-item admin-only" onclick="switchView('products')"><i class="fas fa-box"></i> Data Produk</div>
+            <div class="nav-item" onclick="switchView('transactions')"><i class="fas fa-receipt"></i> Riwayat</div>
+            <div class="nav-item admin-only" onclick="switchView('users')"><i class="fas fa-users"></i> Kelola Kasir</div>
+            <div class="user-info">
+                <div>Halo, <b id="user-name-display">Admin</b></div>
+                <div style="color: red; cursor: pointer; margin-top: 10px;" onclick="doLogout()"><i class="fas fa-sign-out-alt"></i> Logout</div>
+            </div>
+        </nav>
+
+        <!-- Content Area -->
+        <main class="content">
+            
+            <!-- Dashboard -->
+            <div id="view-dashboard" class="view-section active">
+                <h2>Dashboard</h2>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">Ringkasan hari ini</p>
+                <div class="grid-cards">
+                    <div class="glass stat-card">
+                        <h3><span id="stat-products">0</span></h3>
+                        <p>Total Produk</p>
+                    </div>
+                    <div class="glass stat-card">
+                        <h3><span id="stat-transactions">0</span></h3>
+                        <p>Transaksi Selesai</p>
+                    </div>
+                    <div class="glass stat-card">
+                        <h3>Rp <span id="stat-revenue">0</span></h3>
+                        <p>Pendapatan</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- POS (Kasir) -->
+            <div id="view-pos" class="view-section">
+                <h2>Point of Sale</h2>
+                <div class="pos-container" style="margin-top: 15px;">
+                    <div class="glass card scanner-section">
+                        <h3 style="margin-bottom: 10px;">Scan Barcode</h3>
+                        <div id="reader"></div>
+                        <div style="margin-top: 10px; display: flex; gap: 10px;">
+                            <input type="text" id="manual-barcode" placeholder="Atau input manual..." style="flex:1; padding: 10px; border-radius: 8px; border: 1px solid #ccc;">
+                            <button class="btn" style="width: auto;" onclick="addManualToCart()"><i class="fas fa-plus"></i></button>
+                        </div>
+                    </div>
+                    <div class="glass card cart-section">
+                        <div>
+                            <h3 style="margin-bottom: 10px;">Keranjang Belanja</h3>
+                            <div id="cart-items" style="min-height: 150px; max-height: 250px; overflow-y: auto;">
+                                <!-- Cart items -->
+                            </div>
+                        </div>
+                        <div>
+                            <div class="cart-total">Total: Rp <span id="cart-total-price">0</span></div>
+                            <button class="btn" style="background: #10b981;" onclick="checkout()"><i class="fas fa-check-circle"></i> Selesaikan Pembayaran</button>
+                            <button class="btn" style="background: #ef4444; margin-top: 10px;" onclick="clearCart()"><i class="fas fa-trash"></i> Batal</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Products -->
+            <div id="view-products" class="view-section">
+                <h2>Data Produk</h2>
+                <div class="glass card" style="margin-top: 15px;">
+                    <h4>Tambah Produk Baru</h4>
+                    <div class="form-inline" style="margin-top: 10px;">
+                        <div class="input-group">
+                            <label>Barcode</label>
+                            <input type="text" id="prod-barcode" placeholder="Scan/Ketik Barcode">
+                        </div>
+                        <div class="input-group">
+                            <label>Nama Produk</label>
+                            <input type="text" id="prod-name" placeholder="Contoh: Oli Mesin">
+                        </div>
+                        <div class="input-group">
+                            <label>Harga (Rp)</label>
+                            <input type="number" id="prod-price" placeholder="50000">
+                        </div>
+                        <button class="btn" style="width: auto;" onclick="saveProduct()"><i class="fas fa-save"></i> Simpan</button>
+                        <button class="btn" style="width: auto; background: #8b5cf6;" onclick="startAddScanner()"><i class="fas fa-barcode"></i> Scan</button>
+                    </div>
+                    <div id="add-reader" style="width: 100%; max-width: 300px; display: none; margin-bottom: 15px;"></div>
+                </div>
+                <div class="glass card" style="overflow-x: auto;">
+                    <table>
+                        <thead><tr><th>Barcode</th><th>Nama Produk</th><th>Harga</th><th>Aksi</th></tr></thead>
+                        <tbody id="product-list-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Transactions -->
+            <div id="view-transactions" class="view-section">
+                <h2>Riwayat Transaksi</h2>
+                <div class="glass card" style="margin-top: 15px; overflow-x: auto;">
+                    <table>
+                        <thead><tr><th>ID/Waktu</th><th>Kasir</th><th>Item</th><th>Total</th></tr></thead>
+                        <tbody id="transaction-list-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Users -->
+            <div id="view-users" class="view-section">
+                <h2>Kelola Akun Kasir</h2>
+                <div class="glass card" style="margin-top: 15px;">
+                    <div class="form-inline">
+                        <div class="input-group"><label>Username</label><input type="text" id="user-username"></div>
+                        <div class="input-group"><label>Password</label><input type="text" id="user-password"></div>
+                        <button class="btn" style="width: auto;" onclick="saveUser()"><i class="fas fa-user-plus"></i> Tambah</button>
+                    </div>
+                </div>
+                <div class="glass card" style="overflow-x: auto;">
+                    <table>
+                        <thead><tr><th>Username</th><th>Aksi</th></tr></thead>
+                        <tbody id="user-list-body"></tbody>
+                    </table>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Nav Mobile -->
+        <nav class="bottom-nav glass" id="bottom-nav">
+            <div class="nav-item active" onclick="switchView('dashboard')"><i class="fas fa-home"></i></div>
+            <div class="nav-item" onclick="switchView('pos')"><i class="fas fa-cash-register"></i></div>
+            <div class="nav-item admin-only" onclick="switchView('products')"><i class="fas fa-box"></i></div>
+            <div class="nav-item" onclick="switchView('transactions')"><i class="fas fa-receipt"></i></div>
+        </nav>
+    </div>
+
+<script type="module">
+    // ==========================================
+    // KONFIGURASI APLIKASI (WAJIB DIPERHATIKAN)
+    // ==========================================
+    const IS_PREVIEW = false; // UBAH JADI false SAAT DEPLOY KE BLOGGER!
+    const SUPABASE_URL = "https://gpndmdfldkqrwinccexb.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdwbmRtZGZsZGtxcndpbmNjZXhiIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTM3OTQyNzMsImV4cCI6MjEwOTM3MDI3M30.Pqm8gTUcRdCw9QNi_DVCCikHR-ITAKBAT_EQlnabddk";
+    
+    // Inisialisasi
+    const supabase = IS_PREVIEW ? null : window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // State Aplikasi
+    let currentUser = null; // { id, name, role: 'admin' | 'kasir' }
+    let products = [];
+    let transactions = [];
+    let users = [];
+    let cart = [];
+    let html5QrcodeScanner = null;
+    let html5QrcodeAdd = null;
+
+    // --- DUMMY DATA UNTUK MODE PREVIEW ---
+    if (IS_PREVIEW) {
+        document.getElementById('preview-banner').style.display = 'block';
+        document.getElementById('quick-login-btns').style.display = 'flex';
+        products = [
+            { id: 1, barcode: '12345', name: 'Kopi Palu', price: 15000 },
+            { id: 2, barcode: '67890', name: 'Ban RC Crawler 56mm', price: 120000 }
+        ];
+        users = [ { id: 1, username: 'kasir1', password: '123', role: 'kasir' } ];
+    }
+
+    // --- GENERATE PWA SECARA DINAMIS ---
+    const manifest = {
+        name: "Kasir Mangge", short_name: "Kasir", start_url: ".", display: "standalone",
+        background_color: "#f3f4f6", theme_color: "#4F46E5",
+        icons: [{ src: "https://cdn-icons-png.flaticon.com/512/3138/3138296.png", sizes: "512x512", type: "image/png" }]
+    };
+    const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+    const manifestURL = URL.createObjectURL(blob);
+    document.head.insertAdjacentHTML('beforeend', `<link rel="manifest" href="${manifestURL}">`);
+
+    // --- UI LOGIC ---
+    window.toggleLoginType = () => {
+        const type = document.getElementById('login-type').value;
+        document.getElementById('label-ident').innerText = type === 'admin' ? 'Email Admin' : 'Username Kasir';
+    }
+
+    window.switchView = (viewId) => {
+        document.querySelectorAll('.view-section').forEach(el => el.classList.remove('active'));
+        document.getElementById(`view-${viewId}`).classList.add('active');
+        
+        // Update menu styling
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        event.currentTarget.classList.add('active');
+
+        // Logic spesifik view
+        if(viewId === 'pos') initScanner();
+        else stopScanner();
+
+        if(viewId === 'dashboard') updateDashboardStats();
+    }
+
+    const formatRp = (num) => new Intl.NumberFormat('id-ID').format(num);
+
+    // --- AUTHENTICATION (HYBRID LOGIC) ---
+    window.quickLogin = (role) => {
+        if(!IS_PREVIEW) return;
+        currentUser = { id: 99, name: role === 'admin' ? 'Admin Mangge' : 'Kasir 1', role: role };
+        postLoginSetup();
+    }
+
+    window.doLogin = async () => {
+        const type = document.getElementById('login-type').value;
+        const ident = document.getElementById('auth-ident').value;
+        const pass = document.getElementById('auth-pass').value;
+
+        if(!ident || !pass) return alert('Isi data login!');
+
+        if (IS_PREVIEW) {
+            // Logika dummy
+            if(type === 'admin') currentUser = { id: 1, name: 'Admin', role: 'admin' };
+            else currentUser = { id: 2, name: ident, role: 'kasir' };
+            postLoginSetup();
+            return;
+        }
+
+        // REAL SUPABASE LOGIC
+        try {
+            if (type === 'admin') {
+                const { data, error } = await supabase.auth.signInWithPassword({ email: ident, password: pass });
+                if (error) throw error;
+                currentUser = { id: data.user.id, name: 'Admin', role: 'admin' };
+            } else {
+                const { data, error } = await supabase.from('pos_users').select('*').eq('username', ident).eq('password', pass).single();
+                if (error || !data) throw new Error('Username atau Password Kasir salah!');
+                currentUser = { id: data.id, name: data.username, role: 'kasir' };
+            }
+            postLoginSetup();
+        } catch (err) {
+            alert(err.message);
+        }
+    }
+
+    const postLoginSetup = () => {
+        document.getElementById('auth-view').style.display = 'none';
+        document.getElementById('main-view').style.display = 'flex';
+        document.getElementById('user-name-display').innerText = currentUser.name;
+        
+        // Hide Admin menus if Kasir
+        const adminEls = document.querySelectorAll('.admin-only');
+        adminEls.forEach(el => el.style.display = currentUser.role === 'admin' ? 'flex' : 'none');
+        
+        loadData();
+    }
+
+    window.doLogout = async () => {
+        if (!IS_PREVIEW && currentUser?.role === 'admin') await supabase.auth.signOut();
+        currentUser = null;
+        stopScanner();
+        document.getElementById('main-view').style.display = 'none';
+        document.getElementById('auth-view').style.display = 'flex';
+    }
+
+    // --- CRUD OPERASIONAL ---
+    const loadData = async () => {
+        if (!IS_PREVIEW) {
+            const resProd = await supabase.from('pos_products').select('*').order('created_at', {ascending:false});
+            if(resProd.data) products = resProd.data;
+            
+            const resTrans = await supabase.from('pos_transactions').select('*').order('created_at', {ascending:false});
+            if(resTrans.data) transactions = resTrans.data;
+
+            if (currentUser.role === 'admin') {
+                const resUsers = await supabase.from('pos_users').select('*');
+                if(resUsers.data) users = resUsers.data;
+            }
+        }
+        renderProducts();
+        renderTransactions();
+        if(currentUser.role === 'admin') renderUsers();
+        updateDashboardStats();
+    }
+
+    window.saveProduct = async () => {
+        const barcode = document.getElementById('prod-barcode').value;
+        const name = document.getElementById('prod-name').value;
+        const price = parseInt(document.getElementById('prod-price').value);
+
+        if(!barcode || !name || !price) return alert('Lengkapi form!');
+
+        if (IS_PREVIEW) {
+            products.unshift({ id: Date.now(), barcode, name, price });
+        } else {
+            const { error } = await supabase.from('pos_products').insert([{ barcode, name, price }]);
+            if (error) return alert('Gagal menyimpan: ' + error.message);
+        }
+        document.getElementById('prod-barcode').value = '';
+        document.getElementById('prod-name').value = '';
+        document.getElementById('prod-price').value = '';
+        stopAddScanner();
+        loadData();
+        alert('Produk tersimpan!');
+    }
+
+    window.deleteProduct = async (id) => {
+        if(!confirm('Hapus produk?')) return;
+        if(IS_PREVIEW) products = products.filter(p => p.id !== id);
+        else await supabase.from('pos_products').delete().eq('id', id);
+        loadData();
+    }
+
+    const renderProducts = () => {
+        const tbody = document.getElementById('product-list-body');
+        if(products.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Belum ada data</td></tr>';
+            return;
+        }
+        tbody.innerHTML = products.map(p => `
+            <tr>
+                <td>${p.barcode}</td><td>${p.name}</td><td>Rp ${formatRp(p.price)}</td>
+                <td><button onclick="deleteProduct('${p.id}')" style="color:red; background:none; border:none; cursor:pointer;"><i class="fas fa-trash"></i></button></td>
+            </tr>
+        `).join('');
+    }
+
+    // --- KELOLA KASIR (ADMIN) ---
+    window.saveUser = async () => {
+        const username = document.getElementById('user-username').value;
+        const password = document.getElementById('user-password').value;
+        if(!username || !password) return;
+        
+        if (IS_PREVIEW) {
+            users.push({ id: Date.now(), username, password, role: 'kasir' });
+        } else {
+            const { error } = await supabase.from('pos_users').insert([{ username, password, role: 'kasir' }]);
+            if(error) return alert('Error: ' + error.message);
+        }
+        loadData();
+    }
+    
+    window.deleteUser = async (id) => {
+        if(IS_PREVIEW) users = users.filter(u => u.id !== id);
+        else await supabase.from('pos_users').delete().eq('id', id);
+        loadData();
+    }
+
+    const renderUsers = () => {
+        document.getElementById('user-list-body').innerHTML = users.map(u => `
+            <tr>
+                <td>${u.username}</td>
+                <td><button onclick="deleteUser('${u.id}')" style="color:red; background:none; border:none; cursor:pointer;"><i class="fas fa-trash"></i></button></td>
+            </tr>
+        `).join('');
+    }
+
+    // --- TRANSACTIONS & DASHBOARD ---
+    const renderTransactions = () => {
+        const tbody = document.getElementById('transaction-list-body');
+        if(transactions.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">Belum ada data</td></tr>';
+            return;
+        }
+        tbody.innerHTML = transactions.map(t => {
+            const date = IS_PREVIEW ? 'Barusan' : new Date(t.created_at).toLocaleTimeString();
+            return `<tr><td>${date}</td><td>${t.cashier_name}</td><td>${t.items.length} item</td><td>Rp ${formatRp(t.total_amount)}</td></tr>`;
+        }).join('');
+    }
+
+    const updateDashboardStats = () => {
+        document.getElementById('stat-products').innerText = products.length;
+        document.getElementById('stat-transactions').innerText = transactions.length;
+        const rev = transactions.reduce((sum, t) => sum + t.total_amount, 0);
+        document.getElementById('stat-revenue').innerText = formatRp(rev);
+    }
+
+    // --- POS & BARCODE LOGIC ---
+    let scanCooldown = false;
+    const initScanner = () => {
+        if(html5QrcodeScanner) return;
+        html5QrcodeScanner = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 150} }, false);
+        html5QrcodeScanner.render((decodedText) => {
+            if(scanCooldown) return;
+            scanCooldown = true; setTimeout(() => scanCooldown = false, 1500); // Cooldown 1.5 detik per scan
+            processBarcode(decodedText);
+        });
+    }
+
+    const stopScanner = () => {
+        if(html5QrcodeScanner) {
+            html5QrcodeScanner.clear().catch(e => console.log(e));
+            html5QrcodeScanner = null;
+        }
+    }
+
+    window.addManualToCart = () => {
+        const val = document.getElementById('manual-barcode').value;
+        if(val) processBarcode(val);
+        document.getElementById('manual-barcode').value = '';
+    }
+
+    const processBarcode = (barcode) => {
+        const product = products.find(p => p.barcode === barcode);
+        if (product) {
+            const exist = cart.find(c => c.barcode === barcode);
+            if (exist) exist.qty += 1;
+            else cart.push({ ...product, qty: 1 });
+            renderCart();
+            // Optional: Play beep sound if you add a tiny base64 audio here
+        } else {
+            alert('Produk tidak ditemukan!');
+        }
+    }
+
+    window.updateQty = (index, delta) => {
+        cart[index].qty += delta;
+        if(cart[index].qty <= 0) cart.splice(index, 1);
+        renderCart();
+    }
+
+    const renderCart = () => {
+        const container = document.getElementById('cart-items');
+        let total = 0;
+        container.innerHTML = cart.map((c, i) => {
+            const subtotal = c.price * c.qty;
+            total += subtotal;
+            return `
+            <div class="cart-item">
+                <div><b>${c.name}</b><br><small>Rp ${formatRp(c.price)}</small></div>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <button onclick="updateQty(${i}, -1)" style="padding:2px 8px;">-</button>
+                    <span>${c.qty}</span>
+                    <button onclick="updateQty(${i}, 1)" style="padding:2px 8px;">+</button>
+                </div>
+            </div>`;
+        }).join('');
+        document.getElementById('cart-total-price').innerText = formatRp(total);
+    }
+
+    window.clearCart = () => { cart = []; renderCart(); }
+
+    window.checkout = async () => {
+        if(cart.length === 0) return alert('Keranjang kosong!');
+        const total = cart.reduce((sum, c) => sum + (c.price * c.qty), 0);
+        
+        if (IS_PREVIEW) {
+            transactions.unshift({ id: Date.now(), total_amount: total, items: cart, cashier_name: currentUser.name });
+        } else {
+            const { error } = await supabase.from('pos_transactions').insert([{ 
+                total_amount: total, items: cart, cashier_name: currentUser.name 
+            }]);
+            if (error) return alert('Gagal transaksi: ' + error.message);
+        }
+        alert(`Transaksi Berhasil!\nTotal: Rp ${formatRp(total)}`);
+        clearCart();
+        loadData();
+    }
+
+    // --- Scanner untuk Tambah Produk ---
+    window.startAddScanner = () => {
+        document.getElementById('add-reader').style.display = 'block';
+        if(!html5QrcodeAdd) {
+            html5QrcodeAdd = new Html5QrcodeScanner("add-reader", { fps: 10, qrbox: {width: 250, height: 100} }, false);
+            html5QrcodeAdd.render((decodedText) => {
+                document.getElementById('prod-barcode').value = decodedText;
+                stopAddScanner();
+            });
+        }
+    }
+    const stopAddScanner = () => {
+        if(html5QrcodeAdd) {
+            html5QrcodeAdd.clear();
+            html5QrcodeAdd = null;
+            document.getElementById('add-reader').style.display = 'none';
+        }
+    }
+</script>
+</body>
+</html>
